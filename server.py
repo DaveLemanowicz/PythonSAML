@@ -91,7 +91,6 @@ SAML_vars = {
 
 
 def sign_file(xml_file, root_id, key_file, cert_file):
-    import pdb;pdb.set_trace()
     """sign *xml_file* with *key_file* and include content of *cert_file*.
     *xml_file* can be a file, a filename string or an HTTP/FTP url.
 
@@ -106,25 +105,35 @@ def sign_file(xml_file, root_id, key_file, cert_file):
     from dm.xmlsec.binding.tmpl import Signature
 
     doc = parse(xml_file)
-    signature = Signature(xmlsec.TransformExclC14N,
-                          xmlsec.TransformRsaSha1
-                          )
-    doc.getroot().insert(0, signature)
+
+    # Sign the assertion
+    import pdb; pdb.set_trace()
+    assertion = doc.findall('saml:Assertion', {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0]
+    signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
+    assertion.insert(0, signature)
     ref = signature.addReference(xmlsec.TransformSha1)
-
-    #ref.attrib['URI'] = root_id
-
     ref.addTransform(xmlsec.TransformEnveloped)
     key_info = signature.ensureKeyInfo()
     key_info.addKeyName()
     key_info.addX509Data()
-    # now what we already know
     dsigCtx = xmlsec.DSigCtx()
-    # Note: we do not provide read access to `dsigCtx.signKey`.
-    #  Therefore, unlike the `xmlsec` example, we must set the certificate
     signKey = xmlsec.Key.load(key_file, xmlsec.KeyDataFormatPem, None)
     signKey.loadCert(cert_file, xmlsec.KeyDataFormatPem)
-    # Note: the assignment below effectively copies the key
+    dsigCtx.signKey = signKey
+    dsigCtx.sign(signature)
+
+    # Sign the whole document
+    signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
+    doc.getroot().insert(0, signature)
+    ref = signature.addReference(xmlsec.TransformSha1)
+    #ref.attrib['URI'] = root_id
+    ref.addTransform(xmlsec.TransformEnveloped)
+    key_info = signature.ensureKeyInfo()
+    key_info.addKeyName()
+    key_info.addX509Data()
+    dsigCtx = xmlsec.DSigCtx()
+    signKey = xmlsec.Key.load(key_file, xmlsec.KeyDataFormatPem, None)
+    signKey.loadCert(cert_file, xmlsec.KeyDataFormatPem)
     dsigCtx.signKey = signKey
     dsigCtx.sign(signature)
     return tostring(doc)
@@ -133,36 +142,25 @@ def sign_file(xml_file, root_id, key_file, cert_file):
 def sso(*args, **kwargs):
     print
     print '===========================> in sso'
-    print 
-
-
+    print
     xml_template = Template(xml_template_str)
-
     saml_xml = xml_template.render(SAML_vars)
-
-    print 'start SAML xml ================================'    
+    print 'start SAML xml ================================'
     print saml_xml
-    print 'end SAML xml ========================================='    
-
-
-    signed_saml_xml = sign_file(StringIO.StringIO(saml_xml),str(SAML_vars['response_id']),'/home/staffknex/PythonSAML/test.pem','/home/staffknex/PythonSAML/test.crt')
-
-    print 'start signed SAML xml ================================'    
+    print 'end SAML xml ========================================='
+    key_root = "/Users/willmooney/projects/"
+    signed_saml_xml = sign_file(StringIO.StringIO(saml_xml), str(SAML_vars['response_id']),
+            '{0}PythonSAML/test.pem'.format(key_root),
+            '{0}PythonSAML/test.crt'.format(key_root))
+    print 'start signed SAML xml ================================'
     print signed_saml_xml
-    print 'end signed DSAML xml ================================================'    
-
-
+    print 'end signed DSAML xml ================================================'
     post_template = Template(post_template_str)
-
     template_vars = {
       'url':'https://dl.my.salesforce.com/?so=00Do0000000IuhJ',
       'SAML':b64encode(saml_xml),
     }
-    
     response = make_response(post_template.render(template_vars))
-
-
-
     return response
 
 
@@ -178,5 +176,5 @@ def catch_all(path):
     return 'You want path: %s' % path
 
 if __name__ == '__main__':
-    xmlsec.initialize()    
-    app.run('172.22.1.55',8989)
+    xmlsec.initialize()
+    app.run()
