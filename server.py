@@ -90,6 +90,28 @@ SAML_vars = {
 }
 
 
+def sign_xml(xml, key_file, cert_file):
+    """Sign the given XML."""
+    # template aware infrastructure
+    from dm.xmlsec.binding.tmpl import parse, Element, SubElement, \
+         fromstring, XML
+    from dm.xmlsec.binding.tmpl import Signature
+    doc = fromstring(xml)
+    signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
+    doc.insert(0, signature)
+    ref = signature.addReference(xmlsec.TransformSha1)
+    ref.addTransform(xmlsec.TransformEnveloped)
+    key_info = signature.ensureKeyInfo()
+    key_info.addKeyName()
+    key_info.addX509Data()
+    dsigCtx = xmlsec.DSigCtx()
+    signKey = xmlsec.Key.load(key_file, xmlsec.KeyDataFormatPem, None)
+    signKey.loadCert(cert_file, xmlsec.KeyDataFormatPem)
+    dsigCtx.signKey = signKey
+    dsigCtx.sign(signature)
+    return tostring(doc)
+
+
 def sign_file(xml_file, root_id, key_file, cert_file):
     """sign *xml_file* with *key_file* and include content of *cert_file*.
     *xml_file* can be a file, a filename string or an HTTP/FTP url.
@@ -105,38 +127,11 @@ def sign_file(xml_file, root_id, key_file, cert_file):
     from dm.xmlsec.binding.tmpl import Signature
 
     doc = parse(xml_file)
-
-    # Sign the assertion
-    import pdb; pdb.set_trace()
     assertion = doc.findall('saml:Assertion', {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0]
-    signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
-    assertion.insert(0, signature)
-    ref = signature.addReference(xmlsec.TransformSha1)
-    ref.addTransform(xmlsec.TransformEnveloped)
-    key_info = signature.ensureKeyInfo()
-    key_info.addKeyName()
-    key_info.addX509Data()
-    dsigCtx = xmlsec.DSigCtx()
-    signKey = xmlsec.Key.load(key_file, xmlsec.KeyDataFormatPem, None)
-    signKey.loadCert(cert_file, xmlsec.KeyDataFormatPem)
-    dsigCtx.signKey = signKey
-    dsigCtx.sign(signature)
-
-    # Sign the whole document
-    signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
-    doc.getroot().insert(0, signature)
-    ref = signature.addReference(xmlsec.TransformSha1)
-    #ref.attrib['URI'] = root_id
-    ref.addTransform(xmlsec.TransformEnveloped)
-    key_info = signature.ensureKeyInfo()
-    key_info.addKeyName()
-    key_info.addX509Data()
-    dsigCtx = xmlsec.DSigCtx()
-    signKey = xmlsec.Key.load(key_file, xmlsec.KeyDataFormatPem, None)
-    signKey.loadCert(cert_file, xmlsec.KeyDataFormatPem)
-    dsigCtx.signKey = signKey
-    dsigCtx.sign(signature)
-    return tostring(doc)
+    assertion_xml = sign_xml(tostring(assertion), key_file, cert_file)
+    assertion_doc = fromstring(assertion_xml)
+    doc.getroot().insert(0, assertion_doc)
+    return sign_xml(tostring(doc), key_file, cert_file)
 
 @app.route('/sso', methods=['GET', 'POST'])
 def sso(*args, **kwargs):
