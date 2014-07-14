@@ -130,6 +130,7 @@ def sign_file(xml_file, root_id, key_file, cert_file):
     assertion = doc.findall('saml:Assertion', {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0]
     assertion_xml = sign_xml(tostring(assertion), key_file, cert_file)
     assertion_doc = fromstring(assertion_xml)
+    doc.getroot().remove(doc.findall("saml:Assertion", {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0])
     doc.getroot().insert(0, assertion_doc)
     return sign_xml(tostring(doc), key_file, cert_file)
 
@@ -143,8 +144,8 @@ def sso(*args, **kwargs):
     print 'start SAML xml ================================'
     print saml_xml
     print 'end SAML xml ========================================='
-    key_root = "/home/staffknex/"
-    #key_root = "/Users/willmooney/projects/"
+    #key_root = "/home/staffknex/"
+    key_root = "/Users/willmooney/projects/"
     signed_saml_xml = sign_file(StringIO.StringIO(saml_xml), str(SAML_vars['response_id']),
             '{0}PythonSAML/test.pem'.format(key_root),
             '{0}PythonSAML/test.crt'.format(key_root))
@@ -173,5 +174,5 @@ def catch_all(path):
 
 if __name__ == '__main__':
     xmlsec.initialize()
-    app.run('172.22.1.55', 8989)
-    #app.run()
+    #app.run('172.22.1.55', 8989)
+    app.run()
