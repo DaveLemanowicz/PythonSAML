@@ -90,17 +90,19 @@ SAML_vars = {
 }
 
 
-def sign_xml(xml, key_file, cert_file):
+def sign_xml(xml, root_id, key_file, cert_file):
     """Sign the given XML."""
     # template aware infrastructure
     from dm.xmlsec.binding.tmpl import parse, Element, SubElement, \
          fromstring, XML
     from dm.xmlsec.binding.tmpl import Signature
     doc = fromstring(xml)
+    #doc = parse(xml)
     signature = Signature(xmlsec.TransformExclC14N, xmlsec.TransformRsaSha1)
     doc.insert(0, signature)
     ref = signature.addReference(xmlsec.TransformSha1)
     ref.addTransform(xmlsec.TransformEnveloped)
+    ref.addTransform(xmlsec.TransformExclC14N)
     key_info = signature.ensureKeyInfo()
     key_info.addKeyName()
     key_info.addX509Data()
@@ -112,7 +114,7 @@ def sign_xml(xml, key_file, cert_file):
     return tostring(doc)
 
 
-def sign_file(xml_file, root_id, key_file, cert_file):
+def sign_file(xml_file, root_id, assert_id, key_file, cert_file):
     """sign *xml_file* with *key_file* and include content of *cert_file*.
     *xml_file* can be a file, a filename string or an HTTP/FTP url.
 
@@ -127,12 +129,22 @@ def sign_file(xml_file, root_id, key_file, cert_file):
     from dm.xmlsec.binding.tmpl import Signature
 
     doc = parse(xml_file)
+
+    xmlsec.addIDs(doc.getroot(),['ID'])
+
     assertion = doc.findall('saml:Assertion', {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0]
-    assertion_xml = sign_xml(tostring(assertion), key_file, cert_file)
+
+
+
+    assertion_xml = sign_xml(tostring(assertion), assert_id, key_file, cert_file)
+
     assertion_doc = fromstring(assertion_xml)
     doc.getroot().remove(doc.findall("saml:Assertion", {"saml": "urn:oasis:names:tc:SAML:2.0:assertion"})[0])
     doc.getroot().insert(0, assertion_doc)
-    return sign_xml(tostring(doc), key_file, cert_file)
+
+    
+
+    return sign_xml(tostring(doc), root_id, key_file, cert_file)
 
 @app.route('/sso', methods=['GET', 'POST'])
 def sso(*args, **kwargs):
@@ -144,18 +156,21 @@ def sso(*args, **kwargs):
     print 'start SAML xml ================================'
     print saml_xml
     print 'end SAML xml ========================================='
-    #key_root = "/home/staffknex/"
-    key_root = "/Users/willmooney/projects/"
-    signed_saml_xml = sign_file(StringIO.StringIO(saml_xml), str(SAML_vars['response_id']),
-            '{0}PythonSAML/test.pem'.format(key_root),
-            '{0}PythonSAML/test.crt'.format(key_root))
+    key_root = "/home/staffknex/"
+    #key_root = "/Users/willmooney/projects/"
+    signed_saml_xml = sign_file(
+        StringIO.StringIO(saml_xml),
+        str(SAML_vars['response_id']),
+        str(SAML_vars['assertion_id']), 
+        '{0}PythonSAML/test.pem'.format(key_root),
+        '{0}PythonSAML/test.crt'.format(key_root))
     print 'start signed SAML xml ================================'
     print signed_saml_xml
     print 'end signed DSAML xml ================================================'
     post_template = Template(post_template_str)
     template_vars = {
       'url':'https://dl.my.salesforce.com/?so=00Do0000000IuhJ',
-      'SAML':b64encode(saml_xml),
+      'SAML':b64encode(signed_saml_xml),
     }
     response = make_response(post_template.render(template_vars))
     return response
@@ -174,5 +189,5 @@ def catch_all(path):
 
 if __name__ == '__main__':
     xmlsec.initialize()
-    #app.run('172.22.1.55', 8989)
-    app.run()
+    app.run('172.22.1.55', 8989)
+    #app.run()
